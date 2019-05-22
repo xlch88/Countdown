@@ -59,58 +59,116 @@ int split(char dst[][80], char* str, const char* spl)
 
 
 String result2keyid(int value) {
-  switch (value) {
-    case 69:
-      return "1";
-      break;
-    case 70:
-      return "2";
-      break;
-    case 71:
-      return "3";
-      break;
-    case 68:
-      return "4";
-      break;
-    case 64:
-      return "5";
-      break;
-    case 67:
-      return "6";
-      break;
-    case 7:
-      return "7";
-      break;
-    case 21:
-      return "8";
-      break;
-    case 9:
-      return "9";
-      break;
-    case 22:
-      return "*";
-      break;
-    case 25:
-      return "0";
-      break;
-    case 13:
-      return "#";
-      break;
-    case 24:
-      return "up";
-      break;
-    case 82:
-      return "down";
-      break;
-    case 8:
-      return "left";
-      break;
-    case 90:
-      return "right";
-      break;
-    case 28:
-      return "ok";
-      break;
+  Serial.print("KEY: ");
+  Serial.println(value);
+  if (smallIRL) {
+    switch (value) {
+      case 69:
+        return "1";
+        break;
+      case 70:
+        return "2";
+        break;
+      case 71:
+        return "3";
+        break;
+      case 68:
+        return "4";
+        break;
+      case 64:
+        return "5";
+        break;
+      case 67:
+        return "6";
+        break;
+      case 7:
+        return "7";
+        break;
+      case 21:
+        return "8";
+        break;
+      case 9:
+        return "9";
+        break;
+      case 22:
+        return "*";
+        break;
+      case 25:
+        return "0";
+        break;
+      case 13:
+        return "#";
+        break;
+      case 24:
+        return "up";
+        break;
+      case 82:
+        return "down";
+        break;
+      case 8:
+        return "left";
+        break;
+      case 90:
+        return "right";
+        break;
+      case 28:
+        return "ok";
+        break;
+    }
+  } else {
+    switch (value) {
+      case 66:
+        return "1";
+        break;
+      case 67:
+        return "2";
+        break;
+      case 15:
+        return "3";
+        break;
+      case 30:
+        return "4";
+        break;
+      case 29:
+        return "5";
+        break;
+      case 28:
+        return "6";
+        break;
+      case 24:
+        return "7";
+        break;
+      case 69:
+        return "8";
+        break;
+      case 76:
+        return "9";
+        break;
+      case 9:
+        return "*";
+        break;
+      case 86:
+        return "0";
+        break;
+      case 21:
+        return "#";
+        break;
+      case 23:
+        return "up";
+        break;
+      case 13:
+        return "down";
+        break;
+      case 12:
+        return "left";
+        break;
+      case 5:
+        return "right";
+        break;
+      case 2:
+        return "ok";
+        break;
+    }
   }
   return String(value);
 }

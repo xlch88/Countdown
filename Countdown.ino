@@ -1,15 +1,14 @@
-#define RELAY 4   //继电器控制引脚
+#define RELAY 21   //继电器控制引脚
 #define IA1a 39
 #define IA1b 38
-#define Trig 35
-#define Echo 34
-#define RELAY1 33
+#define Trig 41
+#define Echo 42
+#define RELAY1 18
 #define RELAY2 32
 #define RELAY3 A0
 
 #include "LedControl.h"
 #include "WiFiEsp.h"
-#include "HX711.h"
 #include "DS1302.h"
 #include "TM1638lite.h"
 #include <time.h>
@@ -18,19 +17,14 @@
 //#include "IRremote.h"
 #include "IRLremote.h"
 
-DS1302 rtc(40, 41, 29);
-TM1638lite tm(30, 31, 28);
-HX711 HX711_CH0(37, 36, 345);
+DS1302 rtc(39, 38, 37);
+TM1638lite tm(36, 35, 34);
 WiFiEspServer server(4848);
 CNec IRLremote;
-LedControl lc1 = LedControl(53, 50, 52, 4);
-LedControl lc2 = LedControl(51, 48, 49, 4);
-LedControl lc3 = LedControl(46, 44, 47, 4);
-LedControl lc4 = LedControl(43, 45, 42, 4);
-
-#include "char.h"
-#include "helper.func.h"
-#include "print.func.h"
+LedControl lc1 = LedControl(22, 24, 23, 4);
+LedControl lc2 = LedControl(25, 27, 26, 4);
+LedControl lc3 = LedControl(30, 28, 29, 4);
+LedControl lc4 = LedControl(33, 31, 32, 4);
 
 long time1 = 0;
 long time2 = 0;
@@ -49,13 +43,17 @@ boolean isLedProgressBar  = 0;
 boolean isTakeStart       = 0;
 boolean isJoin            = 0;
 boolean isEndSound        = 0;
-long endSoundLoop          = 60;
+long endSoundLoop         = 60;
+boolean smallIRL          = 0;
+boolean puted             = 0;
 
 int menuIndex             = 0;
 int menuMode              = 1;
 
 int halfTime = 0;
 int halfTime2 = 0;
+
+int oldButtons = 0;
 
 int clockTime[6] = {
   2019, /* Y */
@@ -69,6 +67,10 @@ int clockTime[6] = {
 boolean endSoundEd        = 1;
 //int ms_100 = 0;
 
+
+#include "char.h"
+#include "helper.func.h"
+#include "print.func.h"
 #include "timeShow.h"
 
 void setup() {
@@ -83,30 +85,44 @@ void setup() {
   pinMode(RELAY3, OUTPUT);
   pinMode(Trig, OUTPUT);
   pinMode(Echo, INPUT);
-  pinMode(26, OUTPUT);
+  pinMode(43, OUTPUT);
+  pinMode(3, INPUT);
+  pinMode(21, INPUT);
+  pinMode(48, INPUT);
 
   digitalWrite(RELAY, HIGH);
   digitalWrite(RELAY1, HIGH);
   digitalWrite(RELAY2, HIGH);
   digitalWrite(RELAY3, HIGH);
-  digitalWrite(26, HIGH);
+  digitalWrite(43, HIGH);
 
   initLED(lc1);
   initLED(lc2);
   initLED(lc3);
   initLED(lc4);
 
-  initWifi();
+  if (!IRLremote.begin(2))
+    Serial.println(F("You did not choose a valid pin."));
+
+  initTimeShow();
+
+  if (digitalRead(48) == HIGH) {
+    initWifi();
+  } else {
+    printByte(lc4, 3, chars[29]);
+    printByte(lc4, 2, chars[21]);
+    printByte(lc4, 1, chars[21]);
+    printByte(lc4, 0, chars[11]);
+    printByte(lc3, 3, chars[27]);
+    printByte(lc3, 2, chars[19]);
+    printByte(lc3, 1, chars[13]);
+    printByte(lc3, 0, chars[12]);
+  }
 
   printByte(lc1, 3, chars[17]);
   printByte(lc1, 2, chars[18]);
   printByte(lc1, 1, chars[19]);
   printByte(lc1, 0, chars[20]);
-
-  if (!IRLremote.begin(2))
-    Serial.println(F("You did not choose a valid pin."));
-
-  initTimeShow();
 }
 
 long _irrecv_startTime = 0;
@@ -117,7 +133,7 @@ long _buttons_startTime = 0;
 void loop() {
   long now = millis();
 
-  TCPServer();
+  //TCPServer();
 
   if (now - _doing_startTime >= 500) {
     _doing_startTime = now;
@@ -134,9 +150,10 @@ void loop() {
   if (now - _buttons_startTime >= 50) {
     _buttons_startTime = now;
     int buttons = tm.readButtons();
-    if (buttons != 0) {
+    if (buttons != 0 && oldButtons != buttons) {
       switch (buttons) {
         case 192:
+          tm.reset();
           tm.displayText("Load...");
           delay(500);
           if (getServerTime()) {
@@ -148,6 +165,16 @@ void loop() {
           tm.reset();
           break;
 
+        case 3:
+          tm.reset();
+          if (smallIRL = !smallIRL) {
+            tm.displayText("LITE");
+          } else {
+            tm.displayText("FULL");
+          }
+          delay(500);
+          tm.reset();
+          break;
         case 1:
           keydown("up");
           break;
@@ -174,32 +201,46 @@ void loop() {
           break;
       }
     }
+    oldButtons = buttons;
   }
 
   if (endSoundEd == 0) {
     if (halfTime) {
-      digitalWrite(26, LOW);
+      digitalWrite(43, LOW);
     } else {
-      digitalWrite(26, HIGH);
+      digitalWrite(43, HIGH);
     }
     if (now - _endsound_startTime >= endSoundLoop * 1000) {
       endSoundEd = 1;
-      digitalWrite(26, HIGH);
+      digitalWrite(43, HIGH);
     }
   }
 
   if (mode > 0) {
     if (mode == 3) {
-      if (HX711_CH0.Get_Weight() < -20) {
+      if (!puted && digitalRead(40) == LOW) { //等待放入磁铁
+        printByte(lc4, 3, chars[16]);
+        printByte(lc4, 2, chars[15]);
+        printByte(lc4, 1, chars[20]);
+        printByte(lc4, 0, chars[11]);
+      } else if (!puted && digitalRead(40) == HIGH) { //已经放入磁铁
+        puted = 1;
+      } else if (puted && digitalRead(40) == LOW) { //拿走了磁铁
         mode = reallyMode;
         initTime(mode, String(time1).c_str(), 0, isStartPWM, isStopPWM, isStartCamera, isStopCamera, 0, isDelaySound, isLedProgressBar, isEndSound, endSoundLoop);
         return;
-      } else {
-        delay(50);
-        printByte(lc1, 3, chars[10]);
-        delay(50);
-        printByte(lc1, 3, chars[11]);
+      } else if (puted && digitalRead(40) == HIGH) { //等待拿走
+        printByte(lc4, 3, chars[20]);
+        printByte(lc4, 2, chars[18]);
+        printByte(lc4, 1, chars[26]);
+        printByte(lc4, 0, chars[12]);
       }
+
+      delay(50);
+      printByte(lc1, 3, chars[10]);
+      delay(50);
+      printByte(lc1, 3, chars[11]);
+
     } else if (mode == 4) {
       digitalWrite(Trig, LOW);
       delayMicroseconds(2);
@@ -276,7 +317,9 @@ void loop() {
 
 void keydown(String key) {
   endSoundEd = 1;
-  digitalWrite(26, HIGH);
+  digitalWrite(43, LOW);
+  delay(3);
+  digitalWrite(43, HIGH);
 
   Serial.println(key);
   if (key == "*") {
@@ -594,8 +637,10 @@ void doing() {
 
       if (mode == 1 || mode == 2)
         lc4.setLed(2, 0, 7, true);
-      if (isDelaySound)
+      if (isDelaySound) {
         digitalWrite(RELAY, HIGH);
+        Serial.println("滴");
+      }
     } else {
       if (mode == 1) {
         if (isLedProgressBar) {
@@ -623,8 +668,11 @@ void doing() {
 
       if (mode == 1 || mode == 2)
         lc4.setLed(2, 0, 7, false);
-      if (isDelaySound)
+      if (isDelaySound) {
         digitalWrite(RELAY, LOW);
+
+        Serial.println("嗒");
+      }
     }
   }
 }
@@ -723,7 +771,7 @@ void initTime(int smode, char* stime, int _isTakeStart, int _isStartPWM, int _is
   isEndSound = _isEndSound;
   endSoundLoop = _endSoundLoop;
 
-  digitalWrite(26, HIGH);
+  digitalWrite(43, HIGH);
   endSoundEd = 1;
 
   if (!isLedProgressBar) {
@@ -755,24 +803,7 @@ void initTime(int smode, char* stime, int _isTakeStart, int _isStartPWM, int _is
     printByte(lc1, 1, chars[35]);
     printByte(lc1, 0, chars[36]);
   } else if (mode == 3) { //Take
-    printByte(lc4, 3, chars[27]);
-    printByte(lc4, 2, chars[29]);
-    printByte(lc4, 1, chars[18]);
-    printByte(lc4, 0, chars[14]);
-
-    HX711_CH0.begin();
-    delay(500);
-    HX711_CH0.begin();
-
-    printByte(lc4, 3, chars[17]);
-    printByte(lc4, 2, chars[18]);
-    printByte(lc4, 1, chars[19]);
-    printByte(lc4, 0, chars[20]);
-
-    printByte(lc3, 3, chars[20]);
-    printByte(lc3, 2, chars[18]);
-    printByte(lc3, 1, chars[26]);
-    printByte(lc3, 0, chars[12]);
+    puted = 0;
   } else if (mode == 4) {
     printByte(lc4, 3, chars[17]);
     printByte(lc4, 2, chars[18]);
@@ -937,6 +968,13 @@ void initTimeShow() {
   //Timer1.stop();
 
   Time t = rtc.time();
+
+
+  for (int leds = 0; leds <= 7; leds++) {
+    tm.setLED(leds, 0);
+  }
+  tm.reset();
+
   //  int s = t.sec;
   //  while (s == t.sec) {
   //    t = rtc.time();
