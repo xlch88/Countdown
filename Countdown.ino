@@ -1,4 +1,4 @@
-#define RELAY 21   //继电器控制引脚
+#define RELAY 19   //继电器控制引脚
 #define IA1a 39
 #define IA1b 38
 #define Trig 41
@@ -6,16 +6,15 @@
 #define RELAY1 18
 #define RELAY2 32
 #define RELAY3 A0
+#define stepperNum 64000
 
 #include "LedControl.h"
 #include "WiFiEsp.h"
 #include "DS1302.h"
 #include "TM1638lite.h"
 #include <time.h>
-//#include <TimerOne.h>
-//#include <MsTimer2.h>
-//#include "IRremote.h"
 #include "IRLremote.h"
+#include <CheapStepper.h>
 
 DS1302 rtc(39, 38, 37);
 TM1638lite tm(36, 35, 34);
@@ -25,6 +24,7 @@ LedControl lc1 = LedControl(22, 24, 23, 4);
 LedControl lc2 = LedControl(25, 27, 26, 4);
 LedControl lc3 = LedControl(30, 28, 29, 4);
 LedControl lc4 = LedControl(33, 31, 32, 4);
+CheapStepper stepper (46, 47, 50, 51);
 
 long time1 = 0;
 long time2 = 0;
@@ -46,6 +46,7 @@ boolean isEndSound        = 0;
 long endSoundLoop         = 60;
 boolean smallIRL          = 0;
 boolean puted             = 0;
+boolean offline           = 0;
 
 int menuIndex             = 0;
 int menuMode              = 1;
@@ -107,6 +108,7 @@ void setup() {
   initTimeShow();
 
   if (digitalRead(48) == HIGH) {
+    offline = 0;
     initWifi();
   } else {
     printByte(lc4, 3, chars[29]);
@@ -117,6 +119,7 @@ void setup() {
     printByte(lc3, 2, chars[19]);
     printByte(lc3, 1, chars[13]);
     printByte(lc3, 0, chars[12]);
+    offline = 1;
   }
 
   printByte(lc1, 3, chars[17]);
@@ -133,7 +136,9 @@ long _buttons_startTime = 0;
 void loop() {
   long now = millis();
 
-  //TCPServer();
+  if (!offline) {
+    TCPServer();
+  }
 
   if (now - _doing_startTime >= 500) {
     _doing_startTime = now;
@@ -283,11 +288,9 @@ void loop() {
         }
 
         if (isStopPWM) {
-          digitalWrite(IA1a, LOW);
-          //analogWrite(IA1b, 60);
-          digitalWrite(IA1b, HIGH);
-          delay(2000);
-          digitalWrite(IA1b, LOW);
+          for (long x = 0; x < stepperNum; x++) {
+            stepper.step(1);
+          }
         }
 
         if (isEndSound) {
@@ -593,15 +596,15 @@ void doing() {
         boolean isEnd = true;
         Time t = rtc.time();
 
-        if (clockTime[0] != t.yr && clockTime[0] != -1) {
+        if (clockTime[0] != t.yr && clockTime[0] != -1 && t.yr < clockTime[0]) {
           isEnd = false;
-        } else if (clockTime[1] != t.mon && clockTime[1] != -1) {
+        } else if (clockTime[1] != t.mon && clockTime[1] != -1 && t.mon < clockTime[1]) {
           isEnd = false;
-        } else if (clockTime[2] != t.date && clockTime[2] != -1) {
+        } else if (clockTime[2] != t.date && clockTime[2] != -1 && t.date < clockTime[2]) {
           isEnd = false;
-        } else if (clockTime[3] != t.hr && clockTime[3] != -1) {
+        } else if (clockTime[3] != t.hr && clockTime[3] != -1 && t.hr < clockTime[3]) {
           isEnd = false;
-        } else if (clockTime[4] != t.min && clockTime[4] != -1) {
+        } else if (clockTime[4] != t.min && clockTime[4] != -1 && t.min < clockTime[4]) {
           isEnd = false;
         } else if (clockTime[5] != t.sec && clockTime[5] != -1 && t.sec < clockTime[5]) {
           isEnd = false;
@@ -639,7 +642,6 @@ void doing() {
         lc4.setLed(2, 0, 7, true);
       if (isDelaySound) {
         digitalWrite(RELAY, HIGH);
-        Serial.println("滴");
       }
     } else {
       if (mode == 1) {
@@ -670,8 +672,6 @@ void doing() {
         lc4.setLed(2, 0, 7, false);
       if (isDelaySound) {
         digitalWrite(RELAY, LOW);
-
-        Serial.println("嗒");
       }
     }
   }
@@ -746,12 +746,14 @@ void initTime(int smode, char* stime, int _isTakeStart, int _isStartPWM, int _is
   char* end;
   if (mode == 5) {
     int strnum = split(dst, stime, ".");
-    clockTime[0] = static_cast<int>(strtol(dst[0], &end, 10));
-    clockTime[1] = static_cast<int>(strtol(dst[1], &end, 10));
-    clockTime[2] = static_cast<int>(strtol(dst[2], &end, 10));
-    clockTime[3] = static_cast<int>(strtol(dst[3], &end, 10));
-    clockTime[4] = static_cast<int>(strtol(dst[4], &end, 10));
-    clockTime[5] = static_cast<int>(strtol(dst[5], &end, 10));
+    if (strnum == 6) {
+      clockTime[0] = static_cast<long>(strtol(dst[0], &end, 10));
+      clockTime[1] = static_cast<int>(strtol(dst[1], &end, 10));
+      clockTime[2] = static_cast<int>(strtol(dst[2], &end, 10));
+      clockTime[3] = static_cast<int>(strtol(dst[3], &end, 10));
+      clockTime[4] = static_cast<int>(strtol(dst[4], &end, 10));
+      clockTime[5] = static_cast<int>(strtol(dst[5], &end, 10));
+    }
   } else {
     time1 = static_cast<int>(strtol(stime, &end, 10));
   }
@@ -880,21 +882,35 @@ void initTime(int smode, char* stime, int _isTakeStart, int _isStartPWM, int _is
 
   doend = 0;
 
+  setStartTime();
+
   if (mode == 1 || mode == 2) {
     isStart = 1;
     if (isStartCamera && !_isStartCamera) {
       camera();
     }
     if (isStartPWM) {
-      digitalWrite(IA1a, LOW);
-      //analogWrite(IA1b, 60);
-      digitalWrite(IA1b, HIGH);
-      delay(2000 );
-      digitalWrite(IA1b, LOW);
+      printByte(lc4, 3, chars[39]);
+      printByte(lc4, 2, chars[40]);
+      printByte(lc4, 1, chars[41]);
+      printByte(lc4, 0, chars[71]);
+
+      boolean h = true;
+
+      for (long x = 0; x < stepperNum; x++) {
+        stepper.step(0);
+
+        if (x % 1000 == 0) {
+          printNumber(lc3, (int)((float)(float)x / 64000 * 100));
+          h = !h;
+          if (isDelaySound) {
+            digitalWrite(RELAY, h);
+          }
+        }
+      }
     }
   }
 
-  setStartTime();
 }
 void initLED(LedControl lc) {
   int ledDevices = lc.getDeviceCount();
@@ -905,8 +921,8 @@ void initLED(LedControl lc) {
   }
 }
 void initWifi() {
-  char ssid[] = "DowntimeTech_2.4G";
-  char pass[] = "2817436a";
+  char ssid[] = "DowntimeTech-IOT";
+  char pass[] = "42880925";
 
   printByte(lc4, 3, chars[19]);
   printByte(lc4, 2, chars[13]);
@@ -966,6 +982,9 @@ void initWifi() {
 }
 void initTimeShow() {
   //Timer1.stop();
+
+  rtc.writeProtect(false);
+  rtc.halt(false);
 
   Time t = rtc.time();
 

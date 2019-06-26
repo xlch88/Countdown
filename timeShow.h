@@ -1,5 +1,5 @@
 boolean getServerTime() {
-  char server[] = "58.218.67.210";
+  char server[] = "192.168.3.88";
   String result = "";
   WiFiEspClient client;
 
